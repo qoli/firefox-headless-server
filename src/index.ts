@@ -115,7 +115,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       const options = new firefox.Options();
-      options.addArguments("-headless");
       options.setBinary(FIREFOX_PATH);
       
       try {
