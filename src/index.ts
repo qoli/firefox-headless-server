@@ -13,6 +13,31 @@ import firefox from 'selenium-webdriver/firefox.js';
 import fs from 'fs/promises';
 import path from 'path';
 import TurndownService from 'turndown';
+import { JSDOM } from 'jsdom';
+import { By } from 'selenium-webdriver';
+
+// 生成元素的 XPath
+function getXPath(element: Element): string {
+  if (!element.parentElement) {
+    return '/' + element.tagName.toLowerCase();
+  }
+  
+  let siblings = Array.from(element.parentElement.children);
+  let count = 0;
+  let index = -1;
+  
+  for (let i = 0; i < siblings.length; i++) {
+    if (siblings[i].tagName === element.tagName) {
+      count++;
+    }
+    if (siblings[i] === element) {
+      index = count;
+    }
+  }
+  
+  const position = count === 1 ? '' : `[${index}]`;
+  return getXPath(element.parentElement) + '/' + element.tagName.toLowerCase() + position;
+}
 
 // Firefox 瀏覽器路徑配置
 const FIREFOX_PATH = '/Applications/Firefox.app/Contents/MacOS/firefox';
@@ -126,6 +151,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ["url"]
+        }
+      },
+      {
+        name: "text_input",
+        description: "在指定網頁的輸入框中輸入文字",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "要訪問的網頁 URL"
+            },
+            html: {
+              type: "string",
+              description: "輸入框的 HTML 源代碼"
+            },
+            text: {
+              type: "string",
+              description: "要輸入的文字"
+            }
+          },
+          required: ["url", "html", "text"]
         }
       }
     ]
@@ -380,6 +427,143 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new McpError(
           ErrorCode.InternalError,
           `轉換頁面為 Markdown 失敗: ${err.message || '未知錯誤'}`
+        );
+      }
+    }
+
+    case "text_input": {
+      if (!activeDriver) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          "請先啟動瀏覽器會話"
+        );
+      }
+
+      const { url, html, text } = request.params.arguments as { url: string; html: string; text: string };
+      if (!url || !html || !text) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "URL、HTML 源代碼和輸入文字都不能為空"
+        );
+      }
+
+      try {
+        // 導航到指定頁面
+        await activeDriver.get(url);
+        
+        // 等待頁面加載
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // 使用 JSDOM 解析 HTML 源代碼
+        const dom = new JSDOM(html);
+        const doc = dom.window.document;
+        const inputElement = doc.querySelector('input, textarea');
+
+        if (!inputElement) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            "無法在提供的 HTML 中找到輸入框元素"
+          );
+        }
+
+        // 收集所有可能的定位資訊
+        const selectors = [];
+        
+        // 1. ID 選擇器（最高優先級）
+        if (inputElement.id) {
+          selectors.push({
+            type: By.css,
+            value: `#${inputElement.id}`,
+            priority: 1
+          });
+        }
+
+        // 2. Name 屬性選擇器
+        if (inputElement.getAttribute('name')) {
+          selectors.push({
+            type: By.css,
+            value: `[name="${inputElement.getAttribute('name')}"]`,
+            priority: 2
+          });
+        }
+
+        // 3. XPath（基於元素的唯一路徑）
+        const xpath = getXPath(inputElement);
+        selectors.push({
+          type: By.xpath,
+          value: xpath,
+          priority: 3
+        });
+
+        // 4. CSS 選擇器（基於 class）
+        if (inputElement.className) {
+          const classes = inputElement.className.split(' ').filter(Boolean);
+          if (classes.length > 0) {
+            selectors.push({
+              type: By.css,
+              value: '.' + classes.join('.'),
+              priority: 4
+            });
+          }
+        }
+
+        // 5. 標籤名稱和type屬性組合
+        const tagName = inputElement.tagName.toLowerCase();
+        const type = inputElement.getAttribute('type');
+        if (type) {
+          selectors.push({
+            type: By.css,
+            value: `${tagName}[type="${type}"]`,
+            priority: 5
+          });
+        } else {
+          selectors.push({
+            type: By.css,
+            value: tagName,
+            priority: 6
+          });
+        }
+
+        // 按優先級排序選擇器
+        selectors.sort((a, b) => a.priority - b.priority);
+
+        // 嘗試所有定位策略
+        let element = null;
+        let lastError: Error | null = null;
+
+        for (const selector of selectors) {
+          try {
+            element = await activeDriver.findElement(selector.type(selector.value));
+            if (element) {
+              break;
+            }
+          } catch (err) {
+            lastError = err as Error;
+            continue;
+          }
+        }
+
+        if (!element) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `無法在頁面中找到匹配的輸入框元素: ${lastError ? lastError.message : '未知錯誤'}`
+          );
+        }
+        
+        // 清除現有內容並輸入新文字
+        await element.clear();
+        await element.sendKeys(text);
+        
+        return {
+          content: [{
+            type: "text",
+            text: `已成功在輸入框中輸入文字: ${text}`
+          }]
+        };
+      } catch (err: any) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          `輸入文字失敗: ${err.message || '未知錯誤'}`
         );
       }
     }

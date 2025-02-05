@@ -19,10 +19,12 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "0.6.0",
     "@types/turndown": "^5.0.5",
+    "jsdom": "^26.0.0",
     "selenium-webdriver": "^4.28.1",
     "turndown": "^7.2.0"
   },
   "devDependencies": {
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^20.11.24",
     "@types/selenium-webdriver": "^4.1.28",
     "typescript": "^5.3.3"
