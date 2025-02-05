@@ -98,6 +98,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
           required: []
         }
+      },
+      {
+        name: "visit_markdown_url",
+        description: "將網頁轉換為 Markdown 格式查看",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "要轉換的網頁 URL"
+            }
+          },
+          required: ["url"]
+        }
       }
     ]
   };
@@ -272,6 +286,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new McpError(
           ErrorCode.InternalError,
           `關閉瀏覽器失敗: ${err.message || '未知錯誤'}`
+        );
+      }
+    }
+
+    case "visit_markdown_url": {
+      if (!activeDriver) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          "請先啟動瀏覽器會話"
+        );
+      }
+
+      const userUrl = String(request.params.arguments?.url);
+      if (!userUrl) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "URL 不能為空"
+        );
+      }
+
+      try {
+        // 組合 r.jina.ai URL
+        const jinaUrl = `https://r.jina.ai/${encodeURIComponent(userUrl)}`;
+        
+        await activeDriver.get(jinaUrl);
+        return {
+          content: [{
+            type: "text",
+            text: `已成功轉換並訪問 Markdown 頁面: ${jinaUrl}`
+          }]
+        };
+      } catch (err: any) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          `訪問 Markdown 頁面失敗: ${err.message || '未知錯誤'}`
         );
       }
     }
