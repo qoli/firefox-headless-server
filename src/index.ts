@@ -112,6 +112,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["url"]
         }
+      },
+      {
+        name: "visit_markdown_url",
+        description: "將網頁轉換為 Markdown 格式查看",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "要轉換的網頁 URL"
+            }
+          },
+          required: ["url"]
+        }
       }
     ]
   };
