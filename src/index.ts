@@ -12,6 +12,7 @@ import { Builder, Browser, WebDriver } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import fs from 'fs/promises';
 import path from 'path';
+import TurndownService from 'turndown';
 
 // Firefox 瀏覽器路徑配置
 const FIREFOX_PATH = '/Applications/Firefox.app/Contents/MacOS/firefox';
@@ -101,7 +102,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "visit_markdown_url",
-        description: "將網頁轉換為 Markdown 格式查看",
+        description: "將網頁轉換為 Markdown 格式查看(使用 r.jina.ai)",
         inputSchema: {
           type: "object",
           properties: {
@@ -114,8 +115,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: "visit_markdown_url",
-        description: "將網頁轉換為 Markdown 格式查看",
+        name: "convert_to_markdown",
+        description: "使用 Turndown 將網頁轉換為 Markdown 格式",
         inputSchema: {
           type: "object",
           properties: {
@@ -335,6 +336,50 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new McpError(
           ErrorCode.InternalError,
           `訪問 Markdown 頁面失敗: ${err.message || '未知錯誤'}`
+        );
+      }
+    }
+
+    case "convert_to_markdown": {
+      if (!activeDriver) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          "請先啟動瀏覽器會話"
+        );
+      }
+
+      const url = String(request.params.arguments?.url);
+      if (!url) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "URL 不能為空"
+        );
+      }
+
+      try {
+        // 導航到URL
+        await activeDriver.get(url);
+        
+        // 等待 JavaScript 加載（Github 頁面需要）
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // 獲取頁面HTML
+        const html = await activeDriver.getPageSource();
+        
+        // 創建 Turndown 實例並轉換 HTML 為 Markdown
+        const turndownService = new TurndownService();
+        const markdown = turndownService.turndown(html);
+        
+        return {
+          content: [{
+            type: "text",
+            text: markdown
+          }]
+        };
+      } catch (err: any) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          `轉換頁面為 Markdown 失敗: ${err.message || '未知錯誤'}`
         );
       }
     }
