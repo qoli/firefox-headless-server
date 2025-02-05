@@ -11,6 +11,8 @@
 - `get_page_source` - 获取当前页面的源代码。
 - `download_page` - 下载当前页面到指定路径。
 - `close_browser` - 关闭浏览器会话。
+- `visit_markdown_url` - 将网页转换为 Markdown 格式查看(使用 r.jina.ai)。
+- `convert_to_markdown` - 使用 Turndown 将网页转换为 Markdown 格式。
 
 ## 开发
 
@@ -39,8 +41,14 @@ npm run watch
 ```json
 {
   "mcpServers": {
-    "firefox-headless-server": {
-      "command": "/path/to/firefox-headless-server/build/index.js"
+    "firefox-headless": {
+      "command": "node",
+      "args": [
+        "/Volumes/Data/Github/mcp-firefox/firefox-headless-server/build/index.js"
+      ],
+      "env": {
+        "PATH": "/usr/bin:/bin:/usr/local/bin:/usr/sbin:/sbin"
+      }
     }
   }
 }
