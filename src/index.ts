@@ -62,6 +62,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
+        name: "convert_current_to_markdown",
+        description: "將當前瀏覽器頁面轉換為 Markdown 格式",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          required: []
+        }
+      },
+      {
         name: "start_browser",
         description: "啟動一個新的 Firefox 無頭瀏覽器會話",
         inputSchema: {
@@ -411,6 +420,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         // 獲取頁面HTML
+        const html = await activeDriver.getPageSource();
+        
+        // 創建 Turndown 實例並轉換 HTML 為 Markdown
+        const turndownService = new TurndownService();
+        const markdown = turndownService.turndown(html);
+        
+        return {
+          content: [{
+            type: "text",
+            text: markdown
+          }]
+        };
+      } catch (err: any) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          `轉換頁面為 Markdown 失敗: ${err.message || '未知錯誤'}`
+        );
+      }
+    }
+
+    case "convert_current_to_markdown": {
+      if (!activeDriver) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          "請先啟動瀏覽器會話"
+        );
+      }
+
+      try {
+        // 獲取當前頁面源代碼
         const html = await activeDriver.getPageSource();
         
         // 創建 Turndown 實例並轉換 HTML 為 Markdown
