@@ -639,32 +639,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const hasCaptcha = await checkForCaptcha(driver);
         
         if (hasCaptcha) {
-          // 等待用戶確認已完成驗證
-          throw new McpError(
-            ErrorCode.InvalidRequest,
-            "檢測到 Google 驗證，請完成驗證後重新執行命令"
-          );
+          return {
+            content: [{
+              type: "text",
+              text: "檢測到 Google 驗證，請在瀏覽器中完成驗證後，輸入「完成」繼續"
+            }],
+            needsUserInput: true,
+            waitForResponse: true
+          };
         }
 
-        // 獲取頁面內容
+        // 等待頁面加載完成
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // 再次檢查驗證碼
         const stillHasCaptcha = await checkForCaptcha(driver);
         if (stillHasCaptcha) {
-          throw new McpError(
-            ErrorCode.InvalidRequest,
-            "檢測到 Google 驗證，請完成驗證後重新執行命令"
-          );
+          return {
+            content: [{
+              type: "text",
+              text: "請完成 Google 驗證後輸入「完成」繼續"
+            }],
+            needsUserInput: true,
+            waitForResponse: true
+          };
         }
 
         const html = await driver.getPageSource();
         const turndownService = new TurndownService();
         const markdown = turndownService.turndown(html);
         
-        // 如果仍然有驗證碼，拋出錯誤
         if (markdown === null) {
-          throw new McpError(
-            ErrorCode.InvalidRequest,
-            "檢測到 Google 驗證，請完成驗證後重新執行命令"
-          );
+          return {
+            content: [{
+              type: "text",
+              text: "請完成 Google 驗證後輸入「完成」繼續"
+            }],
+            needsUserInput: true,
+            waitForResponse: true
+          };
         }
 
         // 解析 Markdown 內容並生成搜尋結果摘要
