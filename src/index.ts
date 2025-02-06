@@ -642,7 +642,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return {
             content: [{
               type: "text",
-              text: "檢測到 Google 驗證，請在瀏覽器中完成驗證後，輸入「完成」繼續"
+              text: "使用 ask_followup_question 工具向用戶詢問：「檢測到 Google 驗證，請在瀏覽器中完成驗證後，輸入「完成」繼續』"
             }],
             needsUserInput: true,
             waitForResponse: true
