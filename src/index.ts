@@ -163,6 +163,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
+        name: "google_search_to_markdown",
+        description: "使用 Google 搜尋並將結果轉換為 Markdown",
+        inputSchema: {
+          type: "object",
+          properties: {
+            keyword: {
+              type: "string",
+              description: "要搜尋的關鍵字",
+            },
+          },
+          required: ["keyword"],
+        },
+      },
+      {
         name: "text_input",
         description: "在指定網頁的輸入框中輸入文字",
         inputSchema: {
@@ -607,6 +621,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
     }
 
+    case "google_search_to_markdown": {
+      const { keyword } = request.params.arguments as { keyword: string };
+      if (!keyword) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "關鍵字不能為空"
+        );
+      }
+
+      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(keyword)}`;
+
+      try {
+        // 啟動瀏覽器 (如果還沒啟動)
+        if (!activeDriver) {
+          const options = new firefox.Options();
+          options.setBinary(FIREFOX_PATH);
+          activeDriver = await new Builder()
+            .forBrowser(Browser.FIREFOX)
+            .setFirefoxOptions(options)
+            .build();
+        }
+
+        // 導航到 Google 搜尋 URL
+        await activeDriver.get(searchUrl);
+
+        // 等待頁面加載 (Google 搜尋結果頁面可能需要一些時間)
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        
+                // 轉換為 Markdown
+                const html = await activeDriver.getPageSource();
+                const turndownService = new TurndownService();
+                const markdown = turndownService.turndown(html);
+        
+                return {
+                  content: [{
+                    type: "text",
+                    text: markdown
+                  }]
+                };
+              } catch (err: any) {
+                throw new McpError(
+                  ErrorCode.InternalError,
+                  `Google 搜尋失敗: ${err.message || '未知錯誤'}`
+                );
+              }
+            }
     default:
       throw new McpError(
         ErrorCode.MethodNotFound,
