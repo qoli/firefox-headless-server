@@ -45,6 +45,19 @@ const FIREFOX_PATH = '/Applications/Firefox.app/Contents/MacOS/firefox';
 // 存儲活動的瀏覽器會話
 let activeDriver: WebDriver | null = null;
 
+// 確保瀏覽器已啟動的輔助函數
+async function ensureBrowserStarted(): Promise<WebDriver> {
+  if (!activeDriver) {
+    const options = new firefox.Options();
+    options.setBinary(FIREFOX_PATH);
+    activeDriver = await new Builder()
+      .forBrowser(Browser.FIREFOX)
+      .setFirefoxOptions(options)
+      .build();
+  }
+  return activeDriver;
+}
+
 const server = new Server(
   {
     name: "firefox-headless-server",
@@ -237,13 +250,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "navigate_to": {
-      if (!activeDriver) {
-        throw new McpError(
-          ErrorCode.InvalidRequest,
-          "請先啟動瀏覽器會話"
-        );
-      }
-
       const url = String(request.params.arguments?.url);
       if (!url) {
         throw new McpError(
@@ -253,7 +259,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       try {
-        await activeDriver.get(url);
+        const driver = await ensureBrowserStarted();
+        await driver.get(url);
         return {
           content: [{
             type: "text",
@@ -376,13 +383,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "visit_markdown_url": {
-      if (!activeDriver) {
-        throw new McpError(
-          ErrorCode.InvalidRequest,
-          "請先啟動瀏覽器會話"
-        );
-      }
-
       const userUrl = String(request.params.arguments?.url);
       if (!userUrl) {
         throw new McpError(
@@ -392,10 +392,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       try {
+        const driver = await ensureBrowserStarted();
         // 組合 r.jina.ai URL
         const jinaUrl = `https://r.jina.ai/${encodeURIComponent(userUrl)}`;
         
-        await activeDriver.get(jinaUrl);
+        await driver.get(jinaUrl);
         return {
           content: [{
             type: "text",
@@ -411,13 +412,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "convert_to_markdown": {
-      if (!activeDriver) {
-        throw new McpError(
-          ErrorCode.InvalidRequest,
-          "請先啟動瀏覽器會話"
-        );
-      }
-
       const url = String(request.params.arguments?.url);
       if (!url) {
         throw new McpError(
@@ -427,14 +421,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       try {
+        const driver = await ensureBrowserStarted();
         // 導航到URL
-        await activeDriver.get(url);
+        await driver.get(url);
         
         // 等待 JavaScript 加載（Github 頁面需要）
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         // 獲取頁面HTML
-        const html = await activeDriver.getPageSource();
+        const html = await driver.getPageSource();
         
         // 創建 Turndown 實例並轉換 HTML 為 Markdown
         const turndownService = new TurndownService();
@@ -485,13 +480,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case "text_input": {
-      if (!activeDriver) {
-        throw new McpError(
-          ErrorCode.InvalidRequest,
-          "請先啟動瀏覽器會話"
-        );
-      }
-
       const { url, html, text } = request.params.arguments as { url: string; html: string; text: string };
       if (!url || !html || !text) {
         throw new McpError(
@@ -501,8 +489,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       try {
+        const driver = await ensureBrowserStarted();
         // 導航到指定頁面
-        await activeDriver.get(url);
+        await driver.get(url);
         
         // 等待頁面加載
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -586,7 +575,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         for (const selector of selectors) {
           try {
-            element = await activeDriver.findElement(selector.type(selector.value));
+            element = await driver.findElement(selector.type(selector.value));
             if (element) {
               break;
             }
@@ -633,30 +622,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(keyword)}`;
 
       try {
-        // 啟動瀏覽器 (如果還沒啟動)
-        if (!activeDriver) {
-          const options = new firefox.Options();
-          options.setBinary(FIREFOX_PATH);
-          activeDriver = await new Builder()
-            .forBrowser(Browser.FIREFOX)
-            .setFirefoxOptions(options)
-            .build();
-        }
-
+        const driver = await ensureBrowserStarted();
+        
         // 導航到 Google 搜尋 URL
-        await activeDriver.get(searchUrl);
+        await driver.get(searchUrl);
 
         // 等待頁面加載 (Google 搜尋結果頁面可能需要一些時間)
         await new Promise(resolve => setTimeout(resolve, 3000));
 
-        // 定義檢查 Captcha 的函數
-        const checkCaptcha = async (): Promise<boolean> => {
-          return activeDriver?.findElements(By.css('form[action*="sorry"] iframe, #captcha-form'))
-            .then(elements => elements.length > 0) || false;
-        };
-        
         // 檢查是否存在 Captcha
-        const hasCaptcha = await checkCaptcha();
+        const checkForCaptcha = async (webDriver: WebDriver): Promise<boolean> => {
+          return webDriver.findElements(By.css('form[action*="sorry"] iframe, #captcha-form'))
+            .then(elements => elements.length > 0);
+        };
+
+        const hasCaptcha = await checkForCaptcha(driver);
         
         if (hasCaptcha) {
           return {
@@ -668,28 +648,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        // 嘗試獲取頁面內容
-        async function getPageContent(): Promise<string | null> {
-          if (!activeDriver) {
-            throw new McpError(
-              ErrorCode.InvalidRequest,
-              "瀏覽器會話已關閉"
-            );
-          }
-
-          // 檢查是否仍有 Captcha
-          const stillHasCaptcha = await checkCaptcha();
-          if (stillHasCaptcha) {
-            return null;
-          }
-
-          const html = await activeDriver.getPageSource();
-          const turndownService = new TurndownService();
-          return turndownService.turndown(html);
+        // 獲取頁面內容
+        const stillHasCaptcha = await checkForCaptcha(driver);
+        if (stillHasCaptcha) {
+          return {
+            content: [{
+              type: "text",
+              text: "請完成 Google 驗證後回覆"
+            }],
+            needsUserInput: true
+          };
         }
 
-        // 嘗試獲取並轉換為 Markdown
-        const markdown = await getPageContent();
+        const html = await driver.getPageSource();
+        const turndownService = new TurndownService();
+        const markdown = turndownService.turndown(html);
         
         // 如果仍然有驗證碼，返回提示信息
         if (markdown === null) {
