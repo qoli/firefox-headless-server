@@ -701,12 +701,55 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             needsUserInput: true
           };
         }
-        
+
+        // 解析 Markdown 內容並生成搜尋結果摘要
+        const lines = markdown.split('\n');
+        const searchResults = [];
+        let currentResult = null;
+
+        for (const line of lines) {
+          // 識別標題和連結
+          if (line.startsWith('# ') || line.startsWith('## ')) {
+            if (currentResult) {
+              searchResults.push(currentResult);
+            }
+            currentResult = {
+              title: line.replace(/^#+ /, ''),
+              url: '',
+              description: ''
+            };
+          } else if (line.startsWith('[') && line.includes('](')) {
+            if (currentResult) {
+              const matches = line.match(/\[([^\]]+)\]\(([^)]+)\)/);
+              if (matches) {
+                currentResult.url = matches[2];
+              }
+            }
+          } else if (line.trim() && currentResult) {
+            // 累積描述文本
+            if (currentResult.description.length < 200) {
+              currentResult.description += (currentResult.description ? ' ' : '') + line.trim();
+            }
+          }
+        }
+
+        if (currentResult) {
+          searchResults.push(currentResult);
+        }
+
+        // 生成搜尋結果摘要
+        const summary = searchResults
+          .filter(result => result.title && result.url)
+          .map(result => `## ${result.title}\n- URL: ${result.url}\n- 摘要: ${result.description}\n`)
+          .join('\n');
+
         return {
-          content: [{
-            type: "text",
-            text: markdown
-          }]
+          content: [
+            {
+              type: "text",
+              text: "# 搜尋結果摘要\n\n" + summary + "\n\n# 完整搜尋結果\n\n" + markdown
+            }
+          ]
         };
       } catch (err: any) {
         throw new McpError(
