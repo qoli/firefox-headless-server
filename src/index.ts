@@ -649,25 +649,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // 等待頁面加載 (Google 搜尋結果頁面可能需要一些時間)
         await new Promise(resolve => setTimeout(resolve, 3000));
 
+        // 檢查是否存在 Captcha
+        const hasCaptcha = await activeDriver.findElements(By.css('form[action*="sorry"] iframe, #captcha-form')).then(elements => elements.length > 0);
         
-                // 轉換為 Markdown
-                const html = await activeDriver.getPageSource();
-                const turndownService = new TurndownService();
-                const markdown = turndownService.turndown(html);
+        if (hasCaptcha) {
+          return {
+            content: [{
+              type: "text",
+              text: "檢測到 Google Captcha 驗證，請在瀏覽器中完成驗證後回覆"
+            }],
+            needsUserInput: true
+          };
+        }
+
+        // 轉換為 Markdown
+        const html = await activeDriver.getPageSource();
+        const turndownService = new TurndownService();
+        const markdown = turndownService.turndown(html);
         
-                return {
-                  content: [{
-                    type: "text",
-                    text: markdown
-                  }]
-                };
-              } catch (err: any) {
-                throw new McpError(
-                  ErrorCode.InternalError,
-                  `Google 搜尋失敗: ${err.message || '未知錯誤'}`
-                );
-              }
-            }
+        return {
+          content: [{
+            type: "text",
+            text: markdown
+          }]
+        };
+      } catch (err: any) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Google 搜尋失敗: ${err.message || '未知錯誤'}`
+        );
+      }
+    }
     default:
       throw new McpError(
         ErrorCode.MethodNotFound,
