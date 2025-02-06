@@ -649,23 +649,58 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // 等待頁面加載 (Google 搜尋結果頁面可能需要一些時間)
         await new Promise(resolve => setTimeout(resolve, 3000));
 
+        // 定義檢查 Captcha 的函數
+        const checkCaptcha = async (): Promise<boolean> => {
+          return activeDriver?.findElements(By.css('form[action*="sorry"] iframe, #captcha-form'))
+            .then(elements => elements.length > 0) || false;
+        };
+        
         // 檢查是否存在 Captcha
-        const hasCaptcha = await activeDriver.findElements(By.css('form[action*="sorry"] iframe, #captcha-form')).then(elements => elements.length > 0);
+        const hasCaptcha = await checkCaptcha();
         
         if (hasCaptcha) {
           return {
             content: [{
               type: "text",
-              text: "檢測到 Google Captcha 驗證，請在瀏覽器中完成驗證後回覆"
+              text: "檢測到 Google 驗證，請完成驗證後回覆"
             }],
             needsUserInput: true
           };
         }
 
-        // 轉換為 Markdown
-        const html = await activeDriver.getPageSource();
-        const turndownService = new TurndownService();
-        const markdown = turndownService.turndown(html);
+        // 嘗試獲取頁面內容
+        async function getPageContent(): Promise<string | null> {
+          if (!activeDriver) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              "瀏覽器會話已關閉"
+            );
+          }
+
+          // 檢查是否仍有 Captcha
+          const stillHasCaptcha = await checkCaptcha();
+          if (stillHasCaptcha) {
+            return null;
+          }
+
+          const html = await activeDriver.getPageSource();
+          const turndownService = new TurndownService();
+          return turndownService.turndown(html);
+        }
+
+        // 嘗試獲取並轉換為 Markdown
+        const markdown = await getPageContent();
+        
+        // 如果仍然有驗證碼，返回提示信息
+        if (markdown === null) {
+          return {
+            content: [{
+              type: "text",
+              text: "請完成 Google 驗證後回覆"
+            }],
+            needsUserInput: true
+          };
+        }
         
         return {
           content: [{
