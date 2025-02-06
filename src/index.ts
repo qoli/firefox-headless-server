@@ -431,8 +431,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // 獲取頁面HTML
         const html = await driver.getPageSource();
         
-        // 創建 Turndown 實例並轉換 HTML 為 Markdown
-        const turndownService = new TurndownService();
+        // 創建 Turndown 實例並配置規則
+        const turndownService = new TurndownService({
+          headingStyle: 'atx',
+          codeBlockStyle: 'fenced'
+        });
+
+        // 忽略 script 標籤
+        turndownService.remove(['script']);
+        
+        // 轉換 HTML 為 Markdown
         const markdown = turndownService.turndown(html);
         
         return {
@@ -461,8 +469,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // 獲取當前頁面源代碼
         const html = await activeDriver.getPageSource();
         
-        // 創建 Turndown 實例並轉換 HTML 為 Markdown
-        const turndownService = new TurndownService();
+        // 創建 Turndown 實例並配置規則
+        const turndownService = new TurndownService({
+          headingStyle: 'atx',
+          codeBlockStyle: 'fenced'
+        });
+
+        // 忽略 script 標籤
+        turndownService.remove(['script']);
+        
+        // 轉換 HTML 為 Markdown
         const markdown = turndownService.turndown(html);
         
         return {
